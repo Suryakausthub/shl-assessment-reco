@@ -1,115 +1,154 @@
-# Assessment Recommendation System using RAG and Gemini
+Assessment Recommendation System using RAG & Gemini Embeddings
+---------------------------------------------------------------
 
-This project implements a semantic recommendation engine for SHL assessments using a Retrieval-Augmented Generation (RAG) pipeline with Gemini embeddings. The system processes a catalog of assessments and enables users to retrieve the most relevant assessments based on a query or requirement.
+This project is a smart assessment recommendation engine that helps HRs, recruiters, and hiring platforms 
+find the best-fit SHL assessments based on a simple natural language query. It uses a combo of Google's 
+Gemini embeddings and FAISS for fast similarity-based retrieval. A lightweight Flask web app handles the 
+frontend and API.
 
----
+=======================
+1. DATA COLLECTION
+=======================
 
-## 1. Data Collection
+We scraped the SHL Product Catalog:
+URL: https://www.shl.com/solutions/products/product-catalog/
 
-The assessment data was scraped from the SHL Product Catalog using requests and BeautifulSoup and scrape all 366 assements data:
+Scraped 366 assessments using requests + BeautifulSoup.
 
-**Source:** https://www.shl.com/solutions/products/product-catalog/
+Fields extracted:
+- data-entity-id
+- Assessment Name
+- Relative URL
+- Remote Testing (Yes/No)
+- Adaptive/IRT (Yes/No)
+- Test Type (e.g. Knowledge & Skills)
+- Assessment Length (cleaned into numeric mins)
 
-### Fields Extracted:
+Example raw entry:
+4038, C Programming (New), https://www.shl.com/..., Yes, No, Knowledge & Skills, 10
 
-- `data-entity-id`
-- `Assessment Name`
-- `Relative URL`
-- `Remote Testing`
-- `Adaptive/IRT`
-- `Test Type`
-- `Assessment Length (seperate logic)`
+=======================
+2. DATA CLEANING
+=======================
 
-**Example Raw Record:**
+Cleaned using pandas:
+- Removed null/missing fields
+- Converted assessment length to float
+- Retained only relevant fields
 
-```
-4038,C Programming (New),https://www.shl.com/solutions/products/product-catalog/view/c-programming-new/,Yes,No,Knowledge & Skills,10
-```
+Saved as:
+assessment.csv
 
----
+Sample final row:
+3827, .NET Framework 4.5, Yes, Yes, Knowledge & Skills, 30.0
 
-## 2. Data Cleaning
+=======================
+3. EMBEDDINGS & FAISS INDEX
+=======================
 
-The scraped data was processed using `pandas` to remove null values, correct data types, and retain relevant columns.
+We prepared the text by combining relevant metadata fields into one sentence per assessment.
 
-**Final Format (assessment.csv):**
+Then:
+- Used Google Gemini (via google-generativeai) to generate embeddings.
+- Stored vectors in FAISS for fast nearest-neighbor search.
+- Kept original text records (for display) in a separate pickle file.
 
-```
-data-entity-id,Assessment Name,Remote Testing,Adaptive/IRT,Test Type,Assessment Length
-3827,.NET Framework 4.5,Yes,Yes,Knowledge & Skills,30.0
-```
+Files produced:
+- vector.index → FAISS index file
+- vector_texts.pkl → Pickled original descriptions
 
----
+=======================
+4. RAG PIPELINE (rag_pipeline.py)
+=======================
 
-## 3. Embedding and Vector Store Creation
+The RAG logic:
+- Take user query
+- Generate embedding using Gemini
+- Search FAISS index for top-10 similar assessments
+- Return results with key metadata (name, type, duration, etc.)
 
-The cleaned data was used to build a semantic index for similarity-based retrieval.
+No large language model generation involved; just semantic search.
 
-### Process:
+=======================
+5. FLASK WEB APP
+=======================
 
-- Converted CSV to JSON format.
-- Extracted relevant fields and converted them to a list of strings for embedding.
-- Used Google Gemini (`google-generativeai`) for text embeddings.
-- Stored the embeddings using FAISS for efficient nearest-neighbor search.
+Simple interface with:
+- Search box for entering query
+- Table view of recommended assessments
 
-### Files Generated:
+Also exposes a REST endpoint.
 
-- `vector.index`: FAISS vector index
-- `vector_texts.pkl`: Pickled list of original assessment texts
+=======================
+6. API DETAILS
+=======================
 
----
+Endpoint: POST /api/search
 
-## 4. RAG Pipeline Development
-
-A custom module (`rag_pipeline.py`) was developed to manage the RAG pipeline.
-
-**Workflow:**
-
-1. User query is embedded using Gemini.
-2. FAISS is used to retrieve similar assessments.
-3. Results are returned as top-10 matches with metadata.
-
----
-
-## 5. Web Application
-
-A simple Flask-based web interface i developed to enable interaction with the model.
-
-### Features:
-
-- Search interface for entering hiring requirements.
-- Results displayed in a structured table format.
-- REST API endpoint for integration with other systems.
-
----
-
-## 6. API Endpoint
-
-**URL:** `/api/search`  
-**Method:** POST  
-**Request Body:**
-
-```json
+Example Request:
 {
-  "query": "I am hiring a Flutter developer and need a 45-minute personality test"
+  "query": "Looking for a Flutter developer test with personality screening, about 45 mins"
 }
-```
 
-**Response:**
-
-```json
+Example Response:
 {
   "results": [
-    "Android Development (New) | Type: Knowledge & Skills | Remote: Yes | Adaptive: No | length: 7.0"
+    "Android Development (New) | Type: Knowledge & Skills | Remote: Yes | Adaptive: No | Length: 7.0"
   ]
 }
-```
 
----
+=======================
+7. DESIGN DECISIONS
+=======================
 
+- URLs excluded from embeddings to reduce token size and increase relevance.
+- Original entity IDs and links are still stored for display or future use.
+- Embedding is modular — can swap Gemini with OpenAI or Cohere later.
+- RAG here refers to retrieval + ranking, no generator model involved.
 
-## 8. Considerations
+=======================
+8. FUTURE IDEAS
+=======================
 
-- The relative URLs (links) were excluded from embedding to reduce token length and improve performance.
-- However, the original data with `data-entity-id` and links is retained and can be rejoined at runtime for display or retrieval.
-- This allows for the integration of full product links in future enhancements without modifying the embedding pipeline.
+- Add UI filters (duration, remote, test type, etc.)
+- Return full URLs in results for easy linking
+- Let user give feedback to improve re-ranking
+- Add multi-language support
+- Explore adding LLM summarization on top
+
+=======================
+9. FILE STRUCTURE
+=======================
+
+project_root/
+│
+├── data/
+│   ├── assessment.csv
+│   ├── vector.index
+│   └── vector_texts.pkl
+│
+├── src/
+│   ├── scrape_catalog.py
+│   ├── rag_pipeline.py
+│   ├── api.py
+│   └── app.py
+│
+├── templates/
+│   └── index.html
+│
+├── requirements.txt
+└── README.txt (this file)
+
+=======================
+10. TECH USED
+=======================
+
+- Python 3.11
+- FAISS
+- Google Generative AI API (Gemini)
+- Flask
+- pandas
+- BeautifulSoup
+- pickle
+
+Enjoy the project 🚀
